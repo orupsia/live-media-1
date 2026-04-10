@@ -10,19 +10,13 @@ let baseOpacity = 0.10;
 
 let driftX = 0;
 let driftY = 0;
-
-// dynamic offsets per image — these now move with the song
-let imgOffsets = [...visuals].map(() => ({
-  x: (Math.random() - 0.5) * 20,
-  y: (Math.random() - 0.5) * 20,
-  rot: (Math.random() - 0.5) * 4
-}));
+let driftRot = 0;
 
 let lastBass = 0;
-let lastMid = 0;
 let drumCooldown = 0;
 
-document.body.addEventListener("click", async () => {
+// ✅ FIX: listen on overlay instead of body
+overlay.addEventListener("click", async () => {
   if (started) return;
   started = true;
 
@@ -60,18 +54,22 @@ function animate() {
   requestAnimationFrame(animate);
   analyser.getByteFrequencyData(dataArray);
 
-  // Stronger band splits for responsiveness
-  const bass = getFreq(dataArray, 0, 60);         // kick drum
-  const mids = getFreq(dataArray, 60, 250);       // guitar, body
-  const highs = getFreq(dataArray, 250, 900);     // shimmer
+  const bass = getFreq(dataArray, 0, 60);
+  const mids = getFreq(dataArray, 60, 250);
+  const highs = getFreq(dataArray, 250, 900);
 
   // ============================
-  // 🥁 STRONGER DRUM REACTION
+  // 🥁 DRUM DETECTION
   // ============================
   const bassHit = bass > 0.14 && (bass - lastBass) > 0.03;
 
   if (bassHit && drumCooldown <= 0) {
     activeIndex = (activeIndex + 1) % visuals.length;
+
+    // 💥 camera kick
+    driftX += (Math.random() - 0.5) * 25;
+    driftY += (Math.random() - 0.5) * 25;
+
     drumCooldown = 10;
   }
 
@@ -79,40 +77,40 @@ function animate() {
   drumCooldown--;
 
   // ============================
-  // 🎸 MORE RESPONSIVE GUITAR DRIFT
+  // 🎥 CAMERA SHAKE
   // ============================
-  driftX += (mids - 0.1) * 1.3;  // much stronger effect
-  driftY += (highs - 0.1) * 1.1;
 
-  // Slow the drift so it doesn't run away
-  driftX *= 0.88;
-  driftY *= 0.88;
+  // high frequency jitter
+  driftX += (Math.random() - 0.5) * highs * 8;
+  driftY += (Math.random() - 0.5) * highs * 8;
+
+  // mid sway
+  driftX += (mids - 0.1) * 2;
+  driftY += (mids - 0.1) * 2;
+
+  // rotation
+  driftRot += (Math.random() - 0.5) * highs * 2;
+  driftRot += (mids - 0.1) * 0.5;
+
+  // 🔑 damping (keeps everything centered)
+  driftX *= 0.75;
+  driftY *= 0.75;
+  driftRot *= 0.8;
 
   // ============================
-  // APPLY VISUAL EFFECTS
+  // APPLY TO IMAGES
   // ============================
 
   visuals.forEach((img, i) => {
-    const dynamic = imgOffsets[i];
-
-    // Bass pulses push image offsets
-    dynamic.x += (Math.random() - 0.5) * bass * 20;
-    dynamic.y += (Math.random() - 0.5) * mids * 20;
-    dynamic.rot += (Math.random() - 0.5) * highs * 2;
-
     let isActive = (i === activeIndex);
 
-    // MUCH stronger opacity difference so fading is visible
     const targetOpacity = isActive
-      ? baseOpacity + 0.55 + bass * 0.9     // vivid glow
-      : baseOpacity + mids * 0.10;          // faint ghost
+      ? baseOpacity + 0.55 + bass * 0.9
+      : baseOpacity + mids * 0.10;
 
     img.style.opacity = targetOpacity;
 
-    // Very strong hue activity — kept like you wanted
     let hue = (mids * 200 + highs * 340 + bass * 500) % 360;
-
-    // Scale pulsates heavily on bass
     let scale = 1.02 + bass * 0.22 + mids * 0.05;
 
     img.style.filter = `
@@ -122,10 +120,9 @@ function animate() {
     `;
 
     img.style.transform = `
-      translate(${driftX * 25 + dynamic.x}px,
-                ${driftY * 25 + dynamic.y}px)
+      translate(${driftX}px, ${driftY}px)
       scale(${scale})
-      rotate(${dynamic.rot}deg)
+      rotate(${driftRot}deg)
     `;
   });
 }
