@@ -8,6 +8,13 @@ let source;
 let dataArray;
 let started = false;
 
+// 🎯 image switching state
+let currentIndex = 0;
+
+// 🎸 beat detection state (mids)
+let lastMid = 0;
+let beatCooldown = 0;
+
 document.body.addEventListener("click", async () => {
   if (started) return;
   started = true;
@@ -21,8 +28,7 @@ document.body.addEventListener("click", async () => {
   audio.play();
   animate();
 
-  overlay.style.opacity = 0;
-  setTimeout(() => overlay.style.display = "none", 1000);
+  overlay.style.display = "none";
 });
 
 function setupAudio() {
@@ -33,8 +39,14 @@ function setupAudio() {
   source.connect(analyser);
   analyser.connect(audioContext.destination);
 
-  analyser.fftSize = 256;
+  analyser.fftSize = 1024;
   dataArray = new Uint8Array(analyser.frequencyBinCount);
+}
+
+function getFrequencyRange(data, start, end) {
+  let slice = data.slice(start, end);
+  let sum = slice.reduce((a, b) => a + b, 0);
+  return sum / slice.length / 255;
 }
 
 function animate() {
@@ -42,34 +54,42 @@ function animate() {
 
   analyser.getByteFrequencyData(dataArray);
 
-  let avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-  let intensity = avg / 255;
+  let bass = getFrequencyRange(dataArray, 0, 40);
+  let mids = getFrequencyRange(dataArray, 40, 200); // 🎸 guitar zone
+  let highs = getFrequencyRange(dataArray, 200, 512);
+
+  // 🎸 BEAT DETECTION (mid spikes)
+  let midIncrease = mids - lastMid;
+
+  if (midIncrease > 0.08 && mids > 0.2 && beatCooldown <= 0) {
+    // switch image on guitar hit
+    currentIndex = (currentIndex + 1) % visuals.length;
+
+    beatCooldown = 10; // prevents rapid flicker
+  }
+
+  lastMid = mids;
+  beatCooldown--;
 
   visuals.forEach((img, i) => {
-    let depth = i / visuals.length; // 0 (front) → 1 (back)
 
-    // 🎯 Cinematic tuning
-    let blur = depth * 6 + intensity * 4; // reduced blur
-    let scale = 1 + depth * 0.15 + intensity * 0.12;
-    let opacity = 0.35 + (1 - depth) * 0.5;
+    // 🖼️ FADE ACTIVE IMAGE
+    img.style.opacity = i === currentIndex ? 0.85 : 0;
 
-    // subtle parallax movement
-    let moveX = (intensity * 15) * (i % 2 === 0 ? 1 : -1);
-    let moveY = intensity * 8;
+    // 🌈 KEEP YOUR EXISTING COLOR SYSTEM
+    let hue = (mids * 200 + highs * 150 + bass * 100) % 360;
 
-    // gentle color shift (less aggressive)
-    let hue = (avg * 1.5 + i * 40) % 360;
+    let moveX = (bass - highs) * 40;
+    let moveY = (mids - bass) * 25;
 
     img.style.filter = `
-      blur(${blur}px)
-      brightness(${1 + intensity * 0.6})
+      blur(${2 + highs * 8}px)
+      brightness(${1 + mids * 0.6})
       hue-rotate(${hue}deg)
     `;
 
-    img.style.opacity = opacity;
-
     img.style.transform = `
-      scale(${scale})
+      scale(1.05)
       translate(${moveX}px, ${moveY}px)
     `;
   });
